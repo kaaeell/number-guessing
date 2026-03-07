@@ -10,7 +10,7 @@ The computer picks a random number between 1 and 10 and you keep guessing until 
 python guessing_game.py
 ```
 
-###Example
+## Example
 
 The computer picked a number between 1 and 10.
 
