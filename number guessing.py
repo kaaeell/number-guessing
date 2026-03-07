@@ -1,18 +1,32 @@
 import random
 
-print("The computer picks a random number. Try to guess it!")
+print("🎮 Guess the Number Game!")
 
-# random.randint picks a random whole number between 1 and 10
-b = random.randint(1, 10)
-
-# Keep looping until the user guesses correctly
 while True:
-    a = int(input("Type a guess (1-10): "))
+    b = random.randint(1, 10)
+    attempts = 0
 
-    if a < b:
-        print("Go up!")
-    elif a > b:
-        print("Go down!")
-    else:
-        print("Correct! 🎉")
-        break  # stop the loop when the user win 
+    print("\nThe computer picked a number between 1 and 10.")
+
+    while True:
+        a = int(input("Type a guess (1-10): "))
+        attempts += 1
+
+        if abs(a - b) == 1:
+            print("Very close!")
+
+        if a < b:
+            print("Go up!")
+        elif a > b:
+            print("Go down!")
+        else:
+            print(f"Correct! 🎉 You guessed it in {attempts} tries.")
+            break
+
+    play_again = input("Play again? (yes/no): ").lower()
+    if play_again != "yes":
+        print("Thanks for playing! 👋")
+        break
+
+
+
