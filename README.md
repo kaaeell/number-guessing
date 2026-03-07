@@ -10,6 +10,19 @@ The computer picks a random number between 1 and 10 and you keep guessing until 
 python guessing_game.py
 ```
 
+###Example
+
+The computer picked a number between 1 and 10.
+
+Type a guess (1-10): 5
+Go up!
+
+Type a guess (1-10): 7
+Very close!
+
+Type a guess (1-10): 8
+Correct! 🎉 You guessed it in 3 tries.
+
 ## What I used
 
 - `random.randint` to generate the secret number
