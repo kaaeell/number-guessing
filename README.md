@@ -1,32 +1,34 @@
-# Number Guessing Game
+# Number Guessing Game 🎯
 
-A small Python game I made for my Introduction to Computing class.
-
-The computer picks a random number between 1 and 10 and you keep guessing until you get it right. It tells you if your guess is too high or too low.
+A Python terminal game where you guess a randomly picked number.
 
 ## How to run
 
-```bash
-python guessing_game.py
 ```
+python number_guessing.py
+```
+
+## Features
+
+- **3 difficulty levels** — Easy (1–10), Medium (1–50), Hard (1–100)
+- **Warmth hints** — tells you if you're 🔥 scorching hot or 🧊 ice cold
+- **Limited tries** — run out of guesses and you lose
+- **Timer** — see how fast you solved it
+- **Best score tracker** — keeps your fewest-guess record per difficulty
+- **Play again loop** — no need to restart the script
 
 ## Example
 
-The computer picked a number between 1 and 10.
+```
+Choose a difficulty:
+  [1] Easy   — guess 1–10  (up to 5 tries)
+  [2] Medium — guess 1–50  (up to 8 tries)
+  [3] Hard   — guess 1–100 (up to 10 tries)
 
-Type a guess (1-10): 5
-Go up!
+  Guess #1 (5 left): 5
+  Go higher ↑   😐 Getting warmer…
 
-Type a guess (1-10): 7
-Very close!
-
-Type a guess (1-10): 8
-Correct! 🎉 You guessed it in 3 tries.
-
-## What I used
-
-- `random.randint` to generate the secret number
-- `input()` to get the user's guess
-- `while` loop to keep the game going
-- `if / elif / else` to check the guess
-- `break` to stop the loop when the answer is correct
+  Guess #2 (4 left): 8
+  ✅ Correct! The number was 8.
+  You got it in 2 guesses and 3.2 seconds.
+```
