@@ -1,72 +1,144 @@
 import random
+import time
 
-def get_difficulty():
-    print("\nChoose difficulty:")
-    print("  1 - Easy   (1–10)")
-    print("  2 - Medium (1–50)")
-    print("  3 - Hard   (1–100)")
+# ── Difficulty settings ─────────────────────────────────────────────────────
+DIFFICULTIES = {
+    "1": {"name": "Easy",   "range": (1, 10),  "max_guesses": 5},
+    "2": {"name": "Medium", "range": (1, 50),  "max_guesses": 8},
+    "3": {"name": "Hard",   "range": (1, 100), "max_guesses": 10},
+}
+
+# ── High-score table (persists for the session) ──────────────────────────────
+best_scores = {}   # key: difficulty name → fewest guesses to win
+
+
+def print_banner():
+    print("\n" + "═" * 42)
+    print("        🎯  NUMBER GUESSING GAME  🎯")
+    print("═" * 42 + "\n")
+
+
+def choose_difficulty():
+    print("Choose a difficulty:")
+    for key, d in DIFFICULTIES.items():
+        lo, hi = d["range"]
+        print(f"  [{key}] {d['name']:6}  — guess 1–{hi}  (up to {d['max_guesses']} tries)")
     while True:
-        choice = input("Enter 1, 2, or 3: ")
-        if choice == "1":
-            return 10, "Easy"
-        elif choice == "2":
-            return 50, "Medium"
-        elif choice == "3":
-            return 100, "Hard"
-        else:
-            print("Please enter 1, 2, or 3.")
+        choice = input("\nYour choice (1/2/3): ").strip()
+        if choice in DIFFICULTIES:
+            return DIFFICULTIES[choice]
+        print("  Please enter 1, 2, or 3.")
 
-def get_guess(limit):
-    while True:
-        try:
-            guess = int(input(f"Type a guess (1-{limit}): "))
-            if 1 <= guess <= limit:
-                return guess
-            print(f"Please enter a number between 1 and {limit}.")
-        except ValueError:
-            print("That's not a valid number. Try again!")
 
-def play_round(limit):
-    secret = random.randint(1, limit)
-    attempts = 0
+def get_hint(secret, guess, lo, hi):
+    """Return a directional hint that narrows the search range."""
+    diff = abs(secret - guess)
+    span = hi - lo
 
-    while True:
-        guess = get_guess(limit)
-        attempts += 1
+    if diff == 0:
+        return None  # correct — caller handles this
+
+    direction = "higher ↑" if guess < secret else "lower  ↓"
+
+    # Warmth hint
+    if diff <= max(1, span // 10):
+        warmth = "🔥 Scorching hot!"
+    elif diff <= max(2, span // 5):
+        warmth = "♨️  Very warm!"
+    elif diff <= max(3, span // 3):
+        warmth = "😐 Getting warmer…"
+    else:
+        warmth = "🧊 Ice cold."
+
+    return f"  Go {direction}   {warmth}"
+
+
+def play_round(difficulty):
+    lo, hi = difficulty["range"]
+    max_guesses = difficulty["max_guesses"]
+    secret = random.randint(lo, hi)
+    guesses_made = []
+    start_time = time.time()
+
+    print(f"\n{'─'*42}")
+    print(f"  Difficulty : {difficulty['name']}")
+    print(f"  Range      : {lo} – {hi}")
+    print(f"  Max tries  : {max_guesses}")
+    print(f"{'─'*42}\n")
+    print("  I've picked a number. Start guessing!\n")
+
+    for attempt in range(1, max_guesses + 1):
+        remaining = max_guesses - attempt + 1
+        prompt = f"  Guess #{attempt} ({remaining} left): "
+
+        # ── get a valid integer input ────────────────────────────────────────
+        while True:
+            raw = input(prompt).strip()
+            try:
+                guess = int(raw)
+                if lo <= guess <= hi:
+                    break
+                print(f"  ⚠️  Please enter a number between {lo} and {hi}.")
+            except ValueError:
+                print("  ⚠️  That's not a number — try again.")
+
+        guesses_made.append(guess)
 
         if guess == secret:
-            print(f"🎉 Correct! You guessed it in {attempts} {'try' if attempts == 1 else 'tries'}.")
-            return attempts
-        elif abs(guess - secret) <= limit // 10:
-            print("🔥 Very close!" + (" Go up!" if guess < secret else " Go down!"))
-        elif guess < secret:
-            print("⬆️  Go up!")
-        else:
-            print("⬇️  Go down!")
+            elapsed = time.time() - start_time
+            print(f"\n  ✅  Correct! The number was {secret}.")
+            print(f"  You got it in {attempt} guess{'es' if attempt != 1 else ''}"
+                  f" and {elapsed:.1f} seconds.\n")
+
+            # ── update best score ────────────────────────────────────────────
+            name = difficulty["name"]
+            if name not in best_scores or attempt < best_scores[name]:
+                best_scores[name] = attempt
+                if name in best_scores:
+                    print("  🏆  New personal best for this difficulty!\n")
+            return True, attempt
+
+        hint = get_hint(secret, guess, lo, hi)
+        print(hint)
+
+        # ── show guess history after the 3rd attempt ─────────────────────────
+        if len(guesses_made) >= 3:
+            print(f"  History: {guesses_made}")
+
+    # ── out of guesses ───────────────────────────────────────────────────────
+    print(f"\n  ❌  Out of guesses! The number was {secret}. Better luck next time!\n")
+    return False, None
+
+
+def show_scoreboard():
+    if not best_scores:
+        return
+    print("\n  📊  Personal bests this session:")
+    for diff_name, score in best_scores.items():
+        print(f"      {diff_name:6} → {score} guess{'es' if score != 1 else ''}")
+    print()
+
 
 def main():
-    print("🎮 Guess the Number Game!")
-    wins = 0
-    rounds = 0
-    best_score = None
+    print_banner()
+    wins = losses = 0
 
     while True:
-        limit, diff_name = get_difficulty()
-        print(f"\n[{diff_name}] I picked a number between 1 and {limit}. Good luck!")
+        difficulty = choose_difficulty()
+        won, _ = play_round(difficulty)
+        if won:
+            wins += 1
+        else:
+            losses += 1
 
-        tries = play_round(limit)
-        rounds += 1
-        wins += 1
+        show_scoreboard()
+        print(f"  Session: {wins}W / {losses}L")
 
-        if best_score is None or tries < best_score:
-            best_score = tries
-            print("🏆 New best score!")
-
-        print(f"📊 Stats — Rounds played: {rounds} | Best score: {best_score} tries")
-
-        again = input("\nPlay again? (yes/no): ").strip().lower()
-        if again != "yes":
-            print(f"\nThanks for playing! Final best score: {best_score} tries. 👋")
+        again = input("\n  Play again? (y/n): ").strip().lower()
+        if again not in ("y", "yes"):
+            print("\n  Thanks for playing! See you next time. 👋\n")
             break
 
-main()
+
+if __name__ == "__main__":
+    main()
