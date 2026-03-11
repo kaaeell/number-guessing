@@ -2,43 +2,124 @@ import random
 import time
 import threading
 
+# ── Difficulty presets ────────────────────────────────────────────────────────
 DIFFICULTIES = {
-    "1": {"name": "Easy",   "range": (1, 10),  "max_guesses": 5,  "time_limit": 30},
-    "2": {"name": "Medium", "range": (1, 50),  "max_guesses": 8,  "time_limit": 60},
-    "3": {"name": "Hard",   "range": (1, 100), "max_guesses": 10, "time_limit": 90},
+    "1": {"name": "Easy",   "range": (1, 10),  "max_guesses": 5,  "time_limit": 30,  "points": 100},
+    "2": {"name": "Medium", "range": (1, 50),  "max_guesses": 8,  "time_limit": 60,  "points": 250},
+    "3": {"name": "Hard",   "range": (1, 100), "max_guesses": 10, "time_limit": 90,  "points": 500},
 }
 
-best_scores = {}
-time_up = False
+# ── Global state ──────────────────────────────────────────────────────────────
+best_scores   = {}   # difficulty name → fewest guesses
+time_up       = False
+player_name   = "friend"
+total_points  = 0
+win_streak    = 0
+loss_streak   = 0
+
+# ── Personality pools ─────────────────────────────────────────────────────────
+COLD_TAUNTS = [
+    "😂 Not even close. Are you okay?",
+    "🧊 Ice cold. Did you just pick randomly?",
+    "😬 Yikes. Miles away.",
+    "🌏 You're basically on the wrong continent.",
+    "❄️  Brrr. Frozen solid.",
+]
+WARM_CHEERS = [
+    "🔥 You're cooking!",
+    "😤 SO close — don't choke now.",
+    "🎯 You can taste it, can't you?",
+    "👀 You're right there. ONE more push.",
+    "🤏 Thisclose. Don't overthink it!",
+]
+MEDIUM_LINES = [
+    "😐 Warmer... but not exactly breaking news.",
+    "🌤  Getting somewhere. Eventually.",
+    "🤔 Middling. Keep going, I believe in you. Kinda.",
+    "💭 You're in the neighbourhood. Wrong street though.",
+]
+LUCKY_LINES = [
+    "🍀 Wait — FIRST TRY?! Did you cheat? I'm watching you.",
+    "😲 First guess?? Okay statistically that's absurd.",
+    "🎲 Lucky shot! Don't let it go to your head.",
+]
+WIN_LINES = [
+    "🎉 Nailed it, {name}!",
+    "✅ Got there! Proud of you, {name}.",
+    "🙌 YESSS {name}!! You actually did it!",
+    "🏆 Boom. {name} wins.",
+]
+LOSS_LINES = [
+    "💀 Out of guesses, {name}. Tough break.",
+    "😅 So close… yet so far, {name}.",
+    "🤦 The number was RIGHT THERE, {name}.",
+    "😮‍💨 That's rough. The number was {secret}. Better luck next time!",
+]
+STREAK_WIN_LINES = [
+    "🔥 {n}-win streak! You're on FIRE, {name}!",
+    "🚀 {n} in a row! {name} can't be stopped!",
+    "😤 {n} straight wins. Respect.",
+]
+STREAK_LOSS_LINES = [
+    "💧 {n} losses in a row, {name}… it's not your day.",
+    "😬 {n}-game skid. The comeback arc starts NOW.",
+    "🥲 {n} Ls. Take a breath. You've got this.",
+]
+ACHIEVEMENT_LINES = {
+    "Speed Demon":   "⚡ ACHIEVEMENT: Speed Demon — solved in under 10 seconds!",
+    "Minimalist":    "✨ ACHIEVEMENT: Minimalist — won with just 1 guess!",
+    "Hintless":      "🧠 ACHIEVEMENT: Hintless Hero — won without using any hints!",
+    "Comeback":      "🦅 ACHIEVEMENT: Comeback — won after losing 3+ in a row!",
+    "Perfectionist": "💎 ACHIEVEMENT: Perfectionist — solved with max guesses left!",
+}
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def pick(pool, **kwargs):
+    """Pick a random line from a pool and format it."""
+    return random.choice(pool).format(**kwargs)
 
 
 def print_banner():
-    print("\n" + "=" * 42)
-    print("        🎯  NUMBER GUESSING GAME  🎯")
-    print("=" * 42 + "\n")
+    print("\n" + "=" * 44)
+    print("       🎯  NUMBER GUESSING GAME  🎯")
+    print("=" * 44)
+    print("   Hint • Streak • Points • Achievements")
+    print("=" * 44 + "\n")
+
+
+def get_player_name():
+    global player_name
+    name = input("  What's your name? (press Enter to skip): ").strip()
+    player_name = name if name else "Guesser"
+    print(f"\n  Alright, {player_name}. Let's see what you've got.\n")
 
 
 def choose_difficulty():
-    print("Choose a difficulty:")
+    print("  Choose a difficulty:")
     for key, d in DIFFICULTIES.items():
         lo, hi = d["range"]
-        print(f"  [{key}] {d['name']:6}  - guess {lo}-{hi}  (up to {d['max_guesses']} tries, {d['time_limit']}s)")
+        print(f"    [{key}] {d['name']:6}  — guess {lo}–{hi}  "
+              f"({d['max_guesses']} tries, {d['time_limit']}s, {d['points']} pts)")
     while True:
-        choice = input("\nYour choice (1/2/3): ").strip()
+        choice = input("\n  Your choice (1/2/3): ").strip()
         if choice in DIFFICULTIES:
             return DIFFICULTIES[choice]
-        print("Please enter 1, 2, or 3.")
+        print("  Hmm, just 1, 2, or 3 please.")
 
+
+# ── Timer thread ──────────────────────────────────────────────────────────────
 
 def countdown(time_limit):
     global time_up
     warnings = {time_limit // 2, 10, 5}
-    deadline = time.time() + time_limit
+    deadline  = time.time() + time_limit
     while True:
         remaining = deadline - time.time()
         if remaining <= 0:
             time_up = True
-            print("\n\n  ⏰  Time's up!\n")
+            print(f"\n\n  ⏰  Time's up, {player_name}!\n")
             break
         left = int(remaining)
         if left in warnings:
@@ -47,54 +128,89 @@ def countdown(time_limit):
         time.sleep(0.25)
 
 
+# ── Feedback ──────────────────────────────────────────────────────────────────
+
 def warmth_hint(secret, guess, lo, hi):
     diff = abs(secret - guess)
     span = hi - lo
-
     direction = "higher ↑" if guess < secret else "lower ↓"
 
-    if diff <= max(1, span // 10):
-        warmth = "🔥 Scorching hot!"
+    if diff == 0:
+        return ""   # already won
+    elif diff <= max(1, span // 10):
+        flavour = pick(WARM_CHEERS)
     elif diff <= max(2, span // 5):
-        warmth = "♨️  Very warm!"
-    elif diff <= max(3, span // 3):
-        warmth = "😐 Getting warmer..."
+        flavour = pick(MEDIUM_LINES)
     else:
-        warmth = "🧊 Ice cold."
+        flavour = pick(COLD_TAUNTS)
 
-    return f"  Go {direction}   {warmth}"
+    return f"  Go {direction}   {flavour}"
 
 
 def range_hint(secret, guesses_made, lo, hi):
-    current_lo, current_hi = lo, hi
+    cur_lo, cur_hi = lo, hi
     for g in guesses_made:
         if g < secret:
-            current_lo = max(current_lo, g + 1)
+            cur_lo = max(cur_lo, g + 1)
         elif g > secret:
-            current_hi = min(current_hi, g - 1)
-    print(f"  💡 Hint: the number is between {current_lo} and {current_hi}.")
+            cur_hi = min(cur_hi, g - 1)
+    print(f"  💡 The number is between {cur_lo} and {cur_hi}.")
 
+
+def calc_points(difficulty, attempts, elapsed, hints_used):
+    """Score = base × speed_bonus × efficiency_bonus − hint_penalty."""
+    base      = difficulty["points"]
+    max_g     = difficulty["max_guesses"]
+    time_lim  = difficulty["time_limit"]
+
+    efficiency = (max_g - attempts + 1) / max_g          # more guesses left → higher
+    speed      = max(0.5, 1 - (elapsed / time_lim) * 0.5)
+    hint_pen   = hints_used * 0.15
+
+    score = int(base * efficiency * speed * (1 - hint_pen))
+    return max(score, 10)
+
+
+def check_achievements(attempts, elapsed, hints_used, max_guesses, prior_losses):
+    earned = []
+    if attempts == 1:
+        earned.append("Minimalist")
+    if elapsed < 10:
+        earned.append("Speed Demon")
+    if hints_used == 0:
+        earned.append("Hintless")
+    if prior_losses >= 3:
+        earned.append("Comeback")
+    if attempts == 1 and max_guesses > 1:   # still has all but first guess left
+        pass   # Minimalist covers this
+    if max_guesses - attempts >= max_guesses - 1:
+        earned.append("Perfectionist")
+    return list(dict.fromkeys(earned))   # deduplicate, keep order
+
+
+# ── Core round ────────────────────────────────────────────────────────────────
 
 def play_round(difficulty):
-    global time_up
+    global time_up, total_points, win_streak, loss_streak
+
     time_up = False
+    lo, hi        = difficulty["range"]
+    max_guesses   = difficulty["max_guesses"]
+    time_limit    = difficulty["time_limit"]
+    secret        = random.randint(lo, hi)
+    guesses_made  = []
+    hints_used    = 0
+    max_hints     = 2
+    prior_losses  = loss_streak   # snapshot before this round
 
-    lo, hi = difficulty["range"]
-    max_guesses = difficulty["max_guesses"]
-    time_limit = difficulty["time_limit"]
-    secret = random.randint(lo, hi)
-    guesses_made = []
-    hints_used = 0
-    max_hints = 2
-
-    print(f"\n{'-'*42}")
+    print(f"\n  {'─'*40}")
     print(f"  Difficulty : {difficulty['name']}")
-    print(f"  Range      : {lo} - {hi}")
-    print(f"  Max tries  : {max_guesses}")
-    print(f"  Time limit : {time_limit}s")
+    print(f"  Range      : {lo}–{hi}")
+    print(f"  Max tries  : {max_guesses}  |  Time: {time_limit}s")
     print(f"  Hints      : {max_hints} available  (type 'hint', costs 1 guess)")
-    print(f"{'-'*42}\n")
-    print("  I've picked a number. Start guessing!\n")
+    print(f"  Commands   : 'hint' | 'score' | 'quit'")
+    print(f"  {'─'*40}\n")
+    print(f"  I've picked a number, {player_name}. Let's see what you've got!\n")
 
     t = threading.Thread(target=countdown, args=(time_limit,), daemon=True)
     start_time = time.time()
@@ -104,93 +220,156 @@ def play_round(difficulty):
     while attempt < max_guesses:
         if time_up:
             print(f"  The number was {secret}.\n")
+            loss_streak += 1
+            win_streak   = 0
             return False, None
 
-        remaining_guesses = max_guesses - attempt
+        remaining = max_guesses - attempt
 
         try:
-            raw = input(f"  Guess #{attempt + 1} ({remaining_guesses} left): ").strip().lower()
+            raw = input(f"  Guess #{attempt + 1}  ({remaining} left): ").strip().lower()
         except EOFError:
             break
 
         if time_up:
             print(f"  The number was {secret}.\n")
+            loss_streak += 1
+            win_streak   = 0
             return False, None
 
+        # ── special commands ──────────────────────────────────────────────
         if raw == "hint":
             if hints_used >= max_hints:
-                print("  No hints left!")
-            elif remaining_guesses <= 1:
+                print("  No hints remaining!")
+            elif remaining <= 1:
                 print("  Not enough guesses to spend on a hint.")
             else:
                 hints_used += 1
-                attempt += 1
+                attempt    += 1
                 range_hint(secret, guesses_made, lo, hi)
-                print(f"  (Hint {hints_used}/{max_hints} used - {max_guesses - attempt} guesses left)\n")
+                print(f"  (Hint {hints_used}/{max_hints} used — {max_guesses - attempt} guesses left)\n")
             continue
 
+        if raw == "score":
+            print(f"\n  📊 Current session score: {total_points} pts  |  "
+                  f"Streak: {win_streak}W / {loss_streak}L\n")
+            continue
+
+        if raw in ("quit", "surrender"):
+            print(f"\n  🏳️  You surrendered. The number was {secret}. Coward. (jk ❤️)\n")
+            loss_streak += 1
+            win_streak   = 0
+            return False, None
+
+        # ── validate number ───────────────────────────────────────────────
         try:
             guess = int(raw)
             if not (lo <= guess <= hi):
-                print(f"  Please enter a number between {lo} and {hi}.")
+                print(f"  Keep it between {lo} and {hi}, yeah?")
                 continue
         except ValueError:
-            print("  That's not a valid number. Type a number or 'hint'.")
+            print("  That's not a number. Try again (or type 'hint' / 'quit').")
             continue
 
         attempt += 1
         guesses_made.append(guess)
 
+        # ── correct! ──────────────────────────────────────────────────────
         if guess == secret:
             elapsed = time.time() - start_time
-            print(f"\n  ✅ Correct! The number was {secret}.")
-            print(f"  You got it in {attempt} guess{'es' if attempt != 1 else ''} and {elapsed:.1f} seconds.\n")
 
+            if attempt == 1:
+                print(f"\n  {pick(LUCKY_LINES)}")
+            else:
+                print(f"\n  {pick(WIN_LINES, name=player_name)}")
+
+            print(f"  Solved in {attempt} guess{'es' if attempt != 1 else ''} "
+                  f"and {elapsed:.1f}s.\n")
+
+            # points
+            pts = calc_points(difficulty, attempt, elapsed, hints_used)
+            total_points += pts
+            print(f"  +{pts} points  →  Total: {total_points} pts")
+
+            # personal best
             name = difficulty["name"]
             prev = best_scores.get(name)
             if prev is None or attempt < prev:
                 best_scores[name] = attempt
                 print("  🏆 New personal best!\n")
+
+            # achievements
+            achieved = check_achievements(attempt, elapsed, hints_used, max_guesses, prior_losses)
+            for a in achieved:
+                print(f"  {ACHIEVEMENT_LINES[a]}")
+            if achieved:
+                print()
+
+            # streak
+            win_streak  += 1
+            loss_streak  = 0
+            if win_streak >= 2:
+                print(f"  {pick(STREAK_WIN_LINES, n=win_streak, name=player_name)}\n")
+
             return True, attempt
 
+        # ── wrong – give feedback ─────────────────────────────────────────
         print(warmth_hint(secret, guess, lo, hi))
 
         if len(guesses_made) >= 3:
-            print(f"  History: {guesses_made}")
+            print(f"  📜 History: {guesses_made}")
 
+    # ── out of guesses ────────────────────────────────────────────────────────
     if not time_up:
-        print(f"\n  ❌ Out of guesses! The number was {secret}.\n")
+        elapsed = time.time() - start_time
+        print(f"\n  {pick(LOSS_LINES, name=player_name, secret=secret)}")
+        print(f"  (You took {elapsed:.1f}s)\n")
+
+    loss_streak += 1
+    win_streak   = 0
+    if loss_streak >= 2:
+        print(f"  {pick(STREAK_LOSS_LINES, n=loss_streak, name=player_name)}\n")
+
     return False, None
 
 
-def show_scoreboard():
-    if not best_scores:
-        return
-    print("\n  📊 Personal bests this session:")
-    for name, score in best_scores.items():
-        print(f"      {name:6} -> {score} guess{'es' if score != 1 else ''}")
-    print()
+# ── Scoreboard ────────────────────────────────────────────────────────────────
 
+def show_scoreboard(wins, losses):
+    print(f"\n  {'─'*40}")
+    print(f"  Session: {wins}W / {losses}L  |  "
+          f"Points: {total_points}  |  "
+          f"Streak: {win_streak}W\n")
+
+    if best_scores:
+        print("  📊 Personal bests:")
+        for diff_name, guesses in best_scores.items():
+            print(f"      {diff_name:6} → {guesses} guess{'es' if guesses != 1 else ''}")
+    print(f"  {'─'*40}\n")
+
+
+# ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
     print_banner()
+    get_player_name()
+
     wins = losses = 0
 
     while True:
         difficulty = choose_difficulty()
-        won, _ = play_round(difficulty)
+        won, _     = play_round(difficulty)
 
         if won:
-            wins += 1
+            wins   += 1
         else:
             losses += 1
 
-        show_scoreboard()
-        print(f"  Session: {wins}W / {losses}L")
+        show_scoreboard(wins, losses)
 
-        again = input("\n  Play again? (y/n): ").strip().lower()
+        again = input("  Play again? (y/n): ").strip().lower()
         if again not in ("y", "yes"):
-            print("\n  Thanks for playing! See you next time. 👋\n")
+            print(f"\n  Thanks for playing, {player_name}! Final score: {total_points} pts 👋\n")
             break
 
 
