@@ -1,6 +1,8 @@
 import random
 import time
 import threading
+import json
+import os
 
 # ── Difficulty presets ────────────────────────────────────────────────────────
 DIFFICULTIES = {
@@ -8,6 +10,9 @@ DIFFICULTIES = {
     "2": {"name": "Medium", "range": (1, 50),  "max_guesses": 8,  "time_limit": 60,  "points": 250},
     "3": {"name": "Hard",   "range": (1, 100), "max_guesses": 10, "time_limit": 90,  "points": 500},
 }
+
+# save file for the leaderboard, keeping it simple
+SAVE_FILE = "leaderboard.json"
 
 # ── Global state ──────────────────────────────────────────────────────────────
 best_scores   = {}   # difficulty name → fewest guesses
@@ -109,6 +114,75 @@ def choose_difficulty():
         print("  Hmm, just 1, 2, or 3 please.")
 
 
+# ── Leaderboard (persistent) ──────────────────────────────────────────────────
+# i wanted scores to survive after closing the game
+# json felt easier than messing with a database lol
+
+def load_leaderboard():
+    """Load saved scores from file. Returns empty dict if nothing saved yet."""
+    if not os.path.exists(SAVE_FILE):
+        return {}
+    try:
+        with open(SAVE_FILE, "r") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError):
+        # if the file got corrupted somehow just start fresh
+        print("  ⚠️  Couldn't read save file, starting with a clean leaderboard.")
+        return {}
+
+
+def save_leaderboard(leaderboard):
+    """Write leaderboard dict to json file."""
+    try:
+        with open(SAVE_FILE, "w") as f:
+            json.dump(leaderboard, f, indent=2)
+    except IOError:
+        # not the end of the world if it fails to save
+        print("  ⚠️  Couldn't save leaderboard this time.")
+
+
+def show_all_time_leaderboard():
+    """Print top 5 scores per difficulty from the save file."""
+    data = load_leaderboard()
+    if not data:
+        print("\n  📋 No saved scores yet — be the first!\n")
+        return
+
+    medals = ["🥇", "🥈", "🥉"]
+
+    print(f"\n  {'─'*40}")
+    print("  🏅 ALL-TIME LEADERBOARD")
+    print(f"  {'─'*40}")
+
+    for diff_name, entries in data.items():
+        print(f"\n  {diff_name}:")
+        sorted_entries = sorted(entries, key=lambda x: x["score"], reverse=True)[:5]
+        for i, entry in enumerate(sorted_entries):
+            medal  = medals[i] if i < 3 else f"  {i+1}."
+            name   = entry.get("name", "???")
+            score  = entry.get("score", 0)
+            guesses = entry.get("guesses", "?")
+            print(f"    {medal} {name:12} {score:>5} pts  ({guesses} guesses)")
+
+    print(f"\n  {'─'*40}\n")
+
+
+def update_leaderboard(diff_name, score, guesses):
+    """Append this round's result and save to file."""
+    data = load_leaderboard()
+
+    if diff_name not in data:
+        data[diff_name] = []
+
+    data[diff_name].append({
+        "name":    player_name,
+        "score":   score,
+        "guesses": guesses,
+    })
+
+    save_leaderboard(data)
+
+
 # ── Timer thread ──────────────────────────────────────────────────────────────
 
 def countdown(time_limit):
@@ -136,7 +210,7 @@ def warmth_hint(secret, guess, lo, hi):
     direction = "higher ↑" if guess < secret else "lower ↓"
 
     if diff == 0:
-        return ""   # already won
+        return ""
     elif diff <= max(1, span // 10):
         flavour = pick(WARM_CHEERS)
     elif diff <= max(2, span // 5):
@@ -163,7 +237,7 @@ def calc_points(difficulty, attempts, elapsed, hints_used):
     max_g     = difficulty["max_guesses"]
     time_lim  = difficulty["time_limit"]
 
-    efficiency = (max_g - attempts + 1) / max_g          # more guesses left → higher
+    efficiency = (max_g - attempts + 1) / max_g
     speed      = max(0.5, 1 - (elapsed / time_lim) * 0.5)
     hint_pen   = hints_used * 0.15
 
@@ -181,8 +255,8 @@ def check_achievements(attempts, elapsed, hints_used, max_guesses, prior_losses)
         earned.append("Hintless")
     if prior_losses >= 3:
         earned.append("Comeback")
-    if attempts == 1 and max_guesses > 1:   # still has all but first guess left
-        pass   # Minimalist covers this
+    if attempts == 1 and max_guesses > 1:
+        pass   # Minimalist already covers this
     if max_guesses - attempts >= max_guesses - 1:
         earned.append("Perfectionist")
     return list(dict.fromkeys(earned))   # deduplicate, keep order
@@ -201,14 +275,14 @@ def play_round(difficulty):
     guesses_made  = []
     hints_used    = 0
     max_hints     = 2
-    prior_losses  = loss_streak   # snapshot before this round
+    prior_losses  = loss_streak
 
     print(f"\n  {'─'*40}")
     print(f"  Difficulty : {difficulty['name']}")
     print(f"  Range      : {lo}–{hi}")
     print(f"  Max tries  : {max_guesses}  |  Time: {time_limit}s")
     print(f"  Hints      : {max_hints} available  (type 'hint', costs 1 guess)")
-    print(f"  Commands   : 'hint' | 'score' | 'quit'")
+    print(f"  Commands   : 'hint' | 'score' | 'board' | 'quit'")
     print(f"  {'─'*40}\n")
     print(f"  I've picked a number, {player_name}. Let's see what you've got!\n")
 
@@ -255,6 +329,10 @@ def play_round(difficulty):
                   f"Streak: {win_streak}W / {loss_streak}L\n")
             continue
 
+        if raw == "board":
+            show_all_time_leaderboard()
+            continue
+
         if raw in ("quit", "surrender"):
             print(f"\n  🏳️  You surrendered. The number was {secret}. Coward. (jk ❤️)\n")
             loss_streak += 1
@@ -286,26 +364,26 @@ def play_round(difficulty):
             print(f"  Solved in {attempt} guess{'es' if attempt != 1 else ''} "
                   f"and {elapsed:.1f}s.\n")
 
-            # points
             pts = calc_points(difficulty, attempt, elapsed, hints_used)
             total_points += pts
             print(f"  +{pts} points  →  Total: {total_points} pts")
 
-            # personal best
+            # update in-session best
             name = difficulty["name"]
             prev = best_scores.get(name)
             if prev is None or attempt < prev:
                 best_scores[name] = attempt
                 print("  🏆 New personal best!\n")
 
-            # achievements
+            # save to leaderboard file
+            update_leaderboard(difficulty["name"], pts, attempt)
+
             achieved = check_achievements(attempt, elapsed, hints_used, max_guesses, prior_losses)
             for a in achieved:
                 print(f"  {ACHIEVEMENT_LINES[a]}")
             if achieved:
                 print()
 
-            # streak
             win_streak  += 1
             loss_streak  = 0
             if win_streak >= 2:
@@ -342,7 +420,7 @@ def show_scoreboard(wins, losses):
           f"Streak: {win_streak}W\n")
 
     if best_scores:
-        print("  📊 Personal bests:")
+        print("  📊 Personal bests (this session):")
         for diff_name, guesses in best_scores.items():
             print(f"      {diff_name:6} → {guesses} guess{'es' if guesses != 1 else ''}")
     print(f"  {'─'*40}\n")
@@ -353,6 +431,9 @@ def show_scoreboard(wins, losses):
 def main():
     print_banner()
     get_player_name()
+
+    # show leaderboard at start so people know what they're competing against
+    show_all_time_leaderboard()
 
     wins = losses = 0
 
@@ -370,6 +451,7 @@ def main():
         again = input("  Play again? (y/n): ").strip().lower()
         if again not in ("y", "yes"):
             print(f"\n  Thanks for playing, {player_name}! Final score: {total_points} pts 👋\n")
+            show_all_time_leaderboard()
             break
 
 
